@@ -143,15 +143,15 @@ cat << HTML_EOF
         <h2>FreeTurn WG Generator</h2>
         <div class="row">
             <div class="col"><label>Version (v)</label><input type="number" id="v" value="1"></div>
-            <div class="col"><label>Provider</label><input type="text" id="provider" value="\$FT_PROVIDER"></div>
-            <div class="col"><label>MTU</label><input type="number" id="mtu" value="\$FT_MTU"></div>
+            <div class="col"><label>Provider</label><input type="text" id="provider" value="$FT_PROVIDER"></div>
+            <div class="col"><label>MTU</label><input type="number" id="mtu" value="$FT_MTU"></div>
         </div>
         <div class="row">
-            <div class="col"><label>Peer (IP:Port)</label><input type="text" id="peer" value="\$FT_IP:\$FT_PORT"></div>
-            <div class="col"><label>Obfuscation (obf)</label><input type="text" id="obf" value="\$FT_OBF"></div>
+            <div class="col"><label>Peer (IP:Port)</label><input type="text" id="peer" value="$FT_IP:$FT_PORT"></div>
+            <div class="col"><label>Obfuscation (obf)</label><input type="text" id="obf" value="$FT_OBF"></div>
         </div>
         <div class="row">
-            <div class="col"><label>Key</label><input type="text" id="key" value="\$FT_KEY"></div>
+            <div class="col"><label>Key</label><input type="text" id="key" value="$FT_KEY"></div>
         </div>
         <div style="margin-top: 15px;">
             <label>WireGuard Config (wg)</label>
