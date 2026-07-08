@@ -17,7 +17,7 @@
 Запустите эту команду в терминале роутера (SSH). Скрипт скачается в оперативную память и автоматически выполнит всю настройку:
 
 ```bash
-wget -qO- [https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install.sh](https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install.sh) | sh
+wget -qO- https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install.sh | sh
 ```
 (После установки скрипт выведет в консоль прямую ссылку на панель управления локального веб-сервера).
 
@@ -34,6 +34,6 @@ wget -qO- [https://raw.githubusercontent.com/vanomilah/freeturn-entware-installe
 ## 🧹 Удаление
 Если вы хотите полностью удалить сервер, веб-генератор и все конфигурационные файлы, выполните команду:
 ```bash
-wget -qO- [https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/uninstall.sh](https://raw.githubusercontent.com/ТВОЙ_НИК/ТВОЙ_РЕПОЗИТОРИЙ/main/uninstall.sh) | sh
+wget -qO- https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/uninstall.sh | sh
 ```
 Примечание: скрипт удаления не сносит сами пакеты lighttpd, так как они могут использоваться другими сервисами на вашем роутере. При необходимости их можно удалить вручную командой opkg remove lighttpd lighttpd-mod-cgi.
