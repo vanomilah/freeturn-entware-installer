@@ -24,18 +24,43 @@ esac
 
 echo "✅ Архитектура: $FT_ARCH"
 
-# Скачиваем бинарник
-DOWNLOAD_URL="https://github.com/samosvalishe/free-turn-proxy/releases/download/v1.7.2/freeturn-server-linux-${FT_ARCH}"
-echo "⬇️ Скачивание FreeTurn-server v1.7.2..."
+echo "🔍 Поиск последней версии сервера на GitHub..."
+# Запрашиваем данные о последнем релизе у API GitHub
+API_URL="https://api.github.com/repos/samosvalishe/free-turn-proxy/releases/latest"
+# Используем awk, так как он отлично работает в урезанном BusyBox роутера
+LATEST_VERSION=$(curl -s "$API_URL" | grep '"tag_name":' | awk -F '"' '{print $4}')
 
-wget -qO /opt/bin/freeturn-server "$DOWNLOAD_URL"
+# Страховка: если API GitHub временно недоступен
+if [ -z "$LATEST_VERSION" ]; then
+    echo "⚠️ Не удалось получить версию по API. Используем v1.7.2 по умолчанию."
+    LATEST_VERSION="v1.7.2"
+fi
 
-if [ -s "/opt/bin/freeturn-server" ]; then
-    echo "✅ Сервер успешно скачан!"
+# Убираем букву 'v' из названия (v1.7.2 -> 1.7.2) для имени файла
+CLEAN_VERSION=$(echo "$LATEST_VERSION" | sed 's/^v//')
+
+# Формируем точное имя архива и ссылку
+FILE_NAME="freeturn-server_${CLEAN_VERSION}_linux_${FT_ARCH}.tar.gz"
+DOWNLOAD_URL="https://github.com/samosvalishe/free-turn-proxy/releases/download/${LATEST_VERSION}/${FILE_NAME}"
+
+echo "⬇️ Скачивание архива ${FILE_NAME}..."
+# Качаем архив во временную папку роутера
+wget -qO /opt/tmp/freeturn.tar.gz "$DOWNLOAD_URL"
+
+if [ -s "/opt/tmp/freeturn.tar.gz" ]; then
+    echo "📦 Распаковка архива..."
+    tar -xzf /opt/tmp/freeturn.tar.gz -C /opt/tmp/
+    
+    # Достаем бинарник, переносим в папку программ и даем права
+    mv -f /opt/tmp/freeturn-server /opt/bin/freeturn-server
     chmod +x /opt/bin/freeturn-server
+    
+    # Убираем за собой мусор
+    rm -f /opt/tmp/freeturn.tar.gz
+    echo "✅ Сервер успешно распакован и установлен!"
 else
-    echo "❌ Ошибка скачивания бинарника! Проверьте ссылку или наличие релиза для $FT_ARCH."
-    rm -f /opt/bin/freeturn-server
+    echo "❌ Ошибка скачивания! (Не найден файл $FILE_NAME на GitHub)"
+    rm -f /opt/tmp/freeturn.tar.gz
     exit 1
 fi
 
