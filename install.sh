@@ -16,7 +16,7 @@ ARCH=$(uname -m)
 case "$ARCH" in
     x86_64)        FT_ARCH="amd64" ;;
     aarch64|arm64) FT_ARCH="arm64" ;;
-    armv7l|armv8l) FT_ARCH="arm" ;;
+    armv7l|armv8l) FT_ARCH="armv7" ;;
     mips)          FT_ARCH="mips" ;;
     mipsle|mipsel) FT_ARCH="mipsle" ;;
     *)             echo "❌ Ошибка: неизвестная архитектура $ARCH"; exit 1 ;;
@@ -25,42 +25,28 @@ esac
 echo "✅ Архитектура: $FT_ARCH"
 
 echo "🔍 Поиск последней версии сервера на GitHub..."
-# Запрашиваем данные о последнем релизе у API GitHub
 API_URL="https://api.github.com/repos/samosvalishe/free-turn-proxy/releases/latest"
-# Используем awk, так как он отлично работает в урезанном BusyBox роутера
 LATEST_VERSION=$(curl -s "$API_URL" | grep '"tag_name":' | awk -F '"' '{print $4}')
 
-# Страховка: если API GitHub временно недоступен
 if [ -z "$LATEST_VERSION" ]; then
     echo "⚠️ Не удалось получить версию по API. Используем v1.7.2 по умолчанию."
     LATEST_VERSION="v1.7.2"
 fi
 
-# Убираем букву 'v' из названия (v1.7.2 -> 1.7.2) для имени файла
-CLEAN_VERSION=$(echo "$LATEST_VERSION" | sed 's/^v//')
-
-# Формируем точное имя архива и ссылку
-FILE_NAME="freeturn-server_${CLEAN_VERSION}_linux_${FT_ARCH}.tar.gz"
+# Точное имя файла, как на скриншоте (например, server-linux-arm64)
+FILE_NAME="server-linux-${FT_ARCH}"
 DOWNLOAD_URL="https://github.com/samosvalishe/free-turn-proxy/releases/download/${LATEST_VERSION}/${FILE_NAME}"
 
-echo "⬇️ Скачивание архива ${FILE_NAME}..."
-# Качаем архив во временную папку роутера
-wget -qO /opt/tmp/freeturn.tar.gz "$DOWNLOAD_URL"
+echo "⬇️ Скачивание ${FILE_NAME} (версия ${LATEST_VERSION})..."
+# Качаем напрямую в папку bin
+wget -qO /opt/bin/freeturn-server "$DOWNLOAD_URL"
 
-if [ -s "/opt/tmp/freeturn.tar.gz" ]; then
-    echo "📦 Распаковка архива..."
-    tar -xzf /opt/tmp/freeturn.tar.gz -C /opt/tmp/
-    
-    # Достаем бинарник, переносим в папку программ и даем права
-    mv -f /opt/tmp/freeturn-server /opt/bin/freeturn-server
+if [ -s "/opt/bin/freeturn-server" ]; then
+    echo "✅ Сервер успешно скачан!"
     chmod +x /opt/bin/freeturn-server
-    
-    # Убираем за собой мусор
-    rm -f /opt/tmp/freeturn.tar.gz
-    echo "✅ Сервер успешно распакован и установлен!"
 else
-    echo "❌ Ошибка скачивания! (Не найден файл $FILE_NAME на GitHub)"
-    rm -f /opt/tmp/freeturn.tar.gz
+    echo "❌ Ошибка скачивания бинарника! (Не найден $FILE_NAME)"
+    rm -f /opt/bin/freeturn-server
     exit 1
 fi
 
