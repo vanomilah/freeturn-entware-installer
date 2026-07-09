@@ -39,7 +39,7 @@ curl -4 -kL https://raw.githubusercontent.com/vanomilah/freeturn-entware-install
 ```
 
 ## 🧹 Удаление
-Если вы хотите полностью удалить сервер, веб-генератор и все конфигурационные файлы, выполните команду:
+Если вы хотите полностью удалить сервер, клиент, веб-генератор и все конфигурационные файлы, выполните команду:
 ```bash
 wget -qO- https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/uninstall.sh | sh
 ```
