@@ -1,6 +1,6 @@
 # FreeTurn Entware Installer & Web Generator
 
-Автоматизированный скрипт для развертывания сервера [FreeTurn](https://github.com/samosvalishe/free-turn-proxy) и удобного локального веб-генератора ссылок для приложения Freeturn на роутерах с установленной средой Entware.
+Автоматизированный скрипт для развертывания сервера [FreeTurn](https://github.com/samosvalishe/free-turn-proxy) и удобного локального веб-генератора ссылок для приложения [FreeTurn](https://github.com/samosvalishe/turn-proxy-android) на роутерах с установленной средой Entware.
 
 ## 📌 Особенности
 * **Полная автоматизация:** Скрипт сам определяет архитектуру процессора (ARM, MIPS, x86) и скачивает нужный бинарный файл сервера.
