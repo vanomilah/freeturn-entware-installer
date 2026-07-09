@@ -7,7 +7,7 @@ echo "====================================================="
 # --- 1. Установка базовых пакетов ---
 echo "📦 Обновляем пакеты и устанавливаем веб-сервер..."
 opkg update > /dev/null
-opkg install lighttpd lighttpd-mod-cgi wget curl > /dev/null
+opkg install lighttpd lighttpd-mod-cgi wget-ssl ca-bundle curl > /dev/null
 
 # --- 2. Определение архитектуры и загрузка сервера ---
 echo "🔍 Определение архитектуры процессора..."
@@ -17,8 +17,10 @@ case "$ARCH" in
     x86_64)        FT_ARCH="amd64" ;;
     aarch64|arm64) FT_ARCH="arm64" ;;
     armv7l|armv8l) FT_ARCH="armv7" ;;
-    mips)          FT_ARCH="mips" ;;
-    mipsle|mipsel) FT_ARCH="mipsle" ;;
+    mips)          FT_ARCH="mips-softfloat" ;;
+    mipsle|mipsel) FT_ARCH="mipsle-softfloat" ;;
+    mips64)        FT_ARCH="mips64-softfloat" ;;
+    mips64le)      FT_ARCH="mips64le-softfloat" ;;
     *)             echo "❌ Ошибка: неизвестная архитектура $ARCH"; exit 1 ;;
 esac
 
