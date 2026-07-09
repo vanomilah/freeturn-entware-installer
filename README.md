@@ -18,7 +18,7 @@
 Запустите эту команду в терминале роутера (SSH). Скрипт скачается в оперативную память и автоматически выполнит всю настройку:
 
 ```bash
-opkg update && opkg install wget-ssl ca-bundle curl && curl -kL https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install.sh | sh
+opkg update && opkg install wget-ssl ca-bundle curl && curl -4 -kL https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install.sh | sh
 ```
 (После установки скрипт выведет в консоль прямую ссылку на панель управления локального веб-сервера).
 
@@ -31,6 +31,12 @@ opkg update && opkg install wget-ssl ca-bundle curl && curl -kL https://raw.gith
 
 Скопируйте готовую freeturn://... ссылку и вставьте её в приложение на телефоне или ПК.
 
+## 🛡️ Установка Клиента
+
+```bash
+opkg update && opkg install wget-ssl ca-bundle curl
+curl -4 -kL https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install-client.sh | sh
+```
 
 ## 🧹 Удаление
 Если вы хотите полностью удалить сервер, веб-генератор и все конфигурационные файлы, выполните команду:
