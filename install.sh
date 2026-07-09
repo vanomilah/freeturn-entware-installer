@@ -101,8 +101,13 @@ mkdir -p /opt/share/www
 
 CGI_CONF="/opt/etc/lighttpd/conf.d/30-cgi.conf"
 if [ -f "$CGI_CONF" ]; then
-    echo "🔧 Настройка интерпретатора /bin/sh для CGI..."
+    echo "🔧 Настройка CGI и порта..."
     sed -i 's|".cgi" => "/opt/bin/perl"|".cgi" => "/bin/sh"|g' "$CGI_CONF"
+    
+    # Включаем CGI для чистого Entware и жестко задаем порт 8088
+    sed -i 's|#include "conf.d/30-cgi.conf"|include "conf.d/30-cgi.conf"|g' /opt/etc/lighttpd/lighttpd.conf
+    sed -i '/server.port/d' /opt/etc/lighttpd/lighttpd.conf
+    echo 'server.port = 8088' >> /opt/etc/lighttpd/lighttpd.conf
 fi
 
 # --- 6. Развертывание Web-генератора ---
@@ -118,7 +123,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     read -n "$CONTENT_LENGTH" POST_DATA
     
     if echo "$POST_DATA" | grep -q "action=restart"; then
-        /opt/etc/init.d/S99vk-turn-server restart
+        /opt/etc/init.d/S99vk-turn-server restart > /dev/null 2>&1
     fi
     
     if echo "$POST_DATA" | grep -q "action=update_config"; then
@@ -128,7 +133,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
         sed -i "s|-obf-profile [^ ]*|-obf-profile $NEW_OBF|g" /opt/etc/init.d/S99vk-turn-server
         sed -i "s|-listen [0-9.]*:[0-9]*|-listen 0.0.0.0:$NEW_PORT|g" /opt/etc/init.d/S99vk-turn-server
         
-        /opt/etc/init.d/S99vk-turn-server restart
+        /opt/etc/init.d/S99vk-turn-server restart > /dev/null 2>&1
     fi
     
     echo "Status: 303 See Other"
