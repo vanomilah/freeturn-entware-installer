@@ -25,6 +25,15 @@ if [ -z "$PEER" ] || [ -z "$KEY" ]; then
 fi
 
 echo "✅ Подключение к $PEER (Профиль: $OBF)"
+WG_CONFIG=$(echo "$DECODED_JSON" | sed -n 's/.*"wg":"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g')
+
+if [ ! -z "$WG_CONFIG" ]; then
+    echo "-----------------------------------------------------"
+    echo "📋 Ваш конфиг WireGuard (скопируйте его):"
+    echo "-----------------------------------------------------"
+    echo "$WG_CONFIG"
+    echo "-----------------------------------------------------"
+fi
 echo "📦 Установка клиента и локального веб-сервера..."
 opkg update > /dev/null
 opkg install lighttpd lighttpd-mod-cgi wget-ssl ca-bundle curl > /dev/null
