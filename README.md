@@ -18,7 +18,7 @@
 Запустите эту команду в терминале роутера (SSH). Скрипт скачается в оперативную память и автоматически выполнит всю настройку:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install.sh | sh
+opkg update && opkg install wget-ssl ca-bundle curl && curl -kL https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install.sh | sh
 ```
 (После установки скрипт выведет в консоль прямую ссылку на панель управления локального веб-сервера).
 
