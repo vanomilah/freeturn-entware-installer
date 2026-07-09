@@ -36,10 +36,7 @@ opkg update && opkg install wget-ssl ca-bundle curl && curl -4 -kL https://raw.g
 Для установки клиента FreeTurn с веб-интерфейсом управления выполните следующие команды в консоли роутера:
 
 ```bash
-# 1. Скачивание установщика
-curl -4 -kL -o /tmp/install-client.sh [https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install-client.sh](https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install-client.sh)
-
-# 2. Запуск установки
+curl -4 -kL -o /tmp/install-client.sh https://raw.githubusercontent.com/vanomilah/freeturn-entware-installer/main/install-client.sh
 sh /tmp/install-client.sh
 ```
 
