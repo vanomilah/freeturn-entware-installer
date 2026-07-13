@@ -23,9 +23,9 @@ LATEST_VERSION=$(curl -4 -kLs "$API_URL" | grep '"tag_name":' | awk -F '"' '{pri
 [ -z "$LATEST_VERSION" ] && LATEST_VERSION="v1.7.3"
 
 FILE_NAME="client-linux-${FT_ARCH}"
-DOWNLOAD_URL="https://github.com/samosvalishe/free-turn-proxy/releases/download/${LATEST_VERSION}/${FILE_NAME}"
+DOWNLOAD_URL="https://mirror.ghproxy.com/https://github.com/samosvalishe/free-turn-proxy/releases/download/${LATEST_VERSION}/${FILE_NAME}"
 
-echo "⬇️ Скачивание ${FILE_NAME}..."
+echo "⬇️ Скачивание ${FILE_NAME} через зеркало..."
 curl -4 -kL -o /opt/bin/freeturn-client "$DOWNLOAD_URL"
 
 if [ -s "/opt/bin/freeturn-client" ]; then
@@ -35,18 +35,57 @@ else
     exit 1
 fi
 
-echo "⚙️ Создание чистого файла конфигурации..."
-cat << 'CONF_EOF' > /opt/etc/vk-turn.conf
+# Инициализируем дефолтные переменные конфига
 PEER=""
 LINKS=""
 OBF_PROFILE=""
 OBF_KEY=""
-CLIENT_ID="1aa1a31943b997ca7a8a4882b18f4bff"
-LISTEN="127.0.0.1:9000"
 THREADS="12"
 STREAMS="6"
 TRANSPORT="tcp"
 MANUAL_CAPTCHA="yes"
+
+echo "-----------------------------------------------------"
+echo "📥 Хотите сразу импортировать настройки при установке?"
+echo "   (Вставьте ссылку freeturn:// или нажмите Enter для пропуска)"
+echo "-----------------------------------------------------"
+printf "Ссылка: "
+read -r FREETURN_LINK
+
+if [ -n "$FREETURN_LINK" ] && echo "$FREETURN_LINK" | grep -q "^freeturn://"; then
+    echo "🔑 Декодирование ссылки..."
+    BASE64_DATA=$(echo "$FREETURN_LINK" | sed 's|^freeturn://||')
+    # Добиваем base64 строку знаками "=" до кратности 4, если требуется
+    MOD=$(( ${#BASE64_DATA} % 4 ))
+    if [ $MOD -eq 2 ]; then BASE64_DATA="${BASE64_DATA}=="; fi
+    if [ $MOD -eq 3 ]; then BASE64_DATA="${BASE64_DATA}="; fi
+    
+    JSON_DATA=$(echo "$BASE64_DATA" | tr '_-' '/+' | openssl enc -d -base64 -A 2>/dev/null)
+    
+    if [ -n "$JSON_DATA" ]; then
+        # Парсим JSON простым sed/awk, чтобы не ставить тяжелый jq на роутер
+        PEER=$(echo "$JSON_DATA" | grep -o '"peer":"[^"]*' | cut -d'"' -f4)
+        LINKS=$(echo "$JSON_DATA" | grep -o '"links":"[^"]*' | cut -d'"' -f4)
+        OBF_PROFILE=$(echo "$JSON_DATA" | grep -o '"obf":"[^"]*' | cut -d'"' -f4)
+        OBF_KEY=$(echo "$JSON_DATA" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
+        echo "✅ Данные успешно импортированы!"
+    else
+        echo "⚠️  Ошибка декодирования base64. Настройки можно ввести позже в Web-интерфейсе."
+    fi
+fi
+
+echo "⚙️ Запись файла конфигурации /opt/etc/vk-turn.conf..."
+cat << CONF_EOF > /opt/etc/vk-turn.conf
+PEER="$PEER"
+LINKS="$LINKS"
+OBF_PROFILE="$OBF_PROFILE"
+OBF_KEY="$OBF_KEY"
+CLIENT_ID="1aa1a31943b997ca7a8a4882b18f4bff"
+LISTEN="127.0.0.1:9000"
+THREADS="$THREADS"
+STREAMS="$STREAMS"
+TRANSPORT="$TRANSPORT"
+MANUAL_CAPTCHA="$MANUAL_CAPTCHA"
 CONF_EOF
 
 echo "⚙️ Создание системной службы запуска..."
@@ -95,7 +134,6 @@ case "$1" in
     stop) stop ;; 
     restart) stop; sleep 2; start ;;
     status) if [ -f "$PIDFILE" ] && kill -0 $(cat $PIDFILE) 2>/dev/null; then echo "RUNNING"; else echo "STOPPED"; fi ;;
-    *) echo "Usage: $0 {start|stop|restart|status}" ;;
 esac
 INIT_EOF
 
@@ -150,34 +188,19 @@ if [ "$QUERY_STRING" = "action=abort_captcha" ]; then
 fi
 
 if [ "$REQUEST_METHOD" = "POST" ]; then
-    read -n "$CONTENT_LENGTH" POST_DATA
+    POST_DATA=$(cat)
     
-    DECODED=$(echo "$POST_DATA" | awk '
-    BEGIN {
-        for (i = 0; i < 256; ++i) {
-            ch = sprintf("%c", i);
-            hex = sprintf("%02X", i);
-            hextoch[hex] = ch;
-            hextoch[tolower(hex)] = ch;
-        }
-    }
-    {
-        gsub(/\+/, " ");
-        while (match($0, /%[0-9a-fA-F]{2}/)) {
-            $0 = substr($0, 1, RSTART-1) hextoch[substr($0, RSTART+1, 2)] substr($0, RSTART+3);
-        }
-        print $0;
-    }')
+    DECODED=$(echo "$POST_DATA" | sed 's/+/ /g; s/%/\\x/g')
+    DECODED=$(printf "$DECODED")
 
-    NEW_PEER=$(echo "$DECODED" | awk -F'[=&]' '{for(i=1;i<=NF;i++) if($i=="peer") print $(i+1)}' | tr -d "\047\042")
-    NEW_OBF=$(echo "$DECODED" | awk -F'[=&]' '{for(i=1;i<=NF;i++) if($i=="obf") print $(i+1)}' | tr -d "\047\042")
-    NEW_KEY=$(echo "$DECODED" | awk -F'[=&]' '{for(i=1;i<=NF;i++) if($i=="key") print $(i+1)}' | tr -d "\047\042")
-    NEW_VK=$(echo "$DECODED" | awk -F'[=&]' '{for(i=1;i<=NF;i++) if($i=="vk_links") print $(i+1)}' | tr -d "\047\042")
-    
-    NEW_THREADS=$(echo "$DECODED" | awk -F'[=&]' '{for(i=1;i<=NF;i++) if($i=="threads") print $(i+1)}' | tr -d "\047\042")
-    NEW_STREAMS=$(echo "$DECODED" | awk -F'[=&]' '{for(i=1;i<=NF;i++) if($i=="streams") print $(i+1)}' | tr -d "\047\042")
-    NEW_TRANSPORT=$(echo "$DECODED" | awk -F'[=&]' '{for(i=1;i<=NF;i++) if($i=="transport") print $(i+1)}' | tr -d "\047\042")
-    
+    NEW_PEER=$(echo "$DECODED" | grep -o 'peer=[^&]*' | cut -d= -f2 | tr -d "'\"")
+    NEW_OBF=$(echo "$DECODED" | grep -o 'obf=[^&]*' | cut -d= -f2 | tr -d "'\"")
+    NEW_KEY=$(echo "$DECODED" | grep -o 'key=[^&]*' | cut -d= -f2 | tr -d "'\"")
+    NEW_VK=$(echo "$DECODED" | grep -o 'vk_links=[^&]*' | cut -d= -f2 | tr -d "'\"")
+    NEW_THREADS=$(echo "$DECODED" | grep -o 'threads=[^&]*' | cut -d= -f2 | tr -d "'\"")
+    NEW_STREAMS=$(echo "$DECODED" | grep -o 'streams=[^&]*' | cut -d= -f2 | tr -d "'\"")
+    NEW_TRANSPORT=$(echo "$DECODED" | grep -o 'transport=[^&]*' | cut -d= -f2 | tr -d "'\"")
+
     if echo "$POST_DATA" | grep -q "manual_captcha=on"; then CAPTCHA_TOGGLE="yes"; else CAPTCHA_TOGGLE="no"; fi
 
     cat << CONF_EOF > "$CONFIG"
@@ -187,9 +210,9 @@ OBF_PROFILE="$NEW_OBF"
 OBF_KEY="$NEW_KEY"
 CLIENT_ID="1aa1a31943b997ca7a8a4882b18f4bff"
 LISTEN="127.0.0.1:9000"
-THREADS="$NEW_THREADS"
-STREAMS="$NEW_STREAMS"
-TRANSPORT="$NEW_TRANSPORT"
+THREADS="${NEW_THREADS:-12}"
+STREAMS="${NEW_STREAMS:-6}"
+TRANSPORT="${NEW_TRANSPORT:-tcp}"
 MANUAL_CAPTCHA="$CAPTCHA_TOGGLE"
 CONF_EOF
 
@@ -198,9 +221,14 @@ CONF_EOF
     exit 0
 fi
 
+PEER=""
+LINKS=""
+OBF_PROFILE=""
+OBF_KEY=""
 THREADS="12"
 STREAMS="6"
 TRANSPORT="tcp"
+MANUAL_CAPTCHA="yes"
 
 if [ -f "$CONFIG" ]; then . "$CONFIG"; fi
 
@@ -222,7 +250,7 @@ input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px;
 .status-running{color:#38a169} .status-stopped{color:#e53e3e}
 .log-box{background:#1a202c;color:#48bb78;font-family:monospace;font-size:12px;padding:14px;border-radius:6px;height:350px;overflow-y:auto;white-space:pre-wrap;margin-top:8px}
 .flex-group{display:flex;gap:16px} .flex-child{flex:1}
-.checkbox-container{display:flex;gap:24px;margin-top:16px;background:#f7fafc;padding:12px;border-radius:6px;border:1px solid #e2e8f0}
+.checkbox-container{display:flex;flex-direction:column;gap:6px;margin-top:16px;background:#f7fafc;padding:12px;border-radius:6px;border:1px solid #e2e8f0}
 .checkbox-label{display:flex;align-items:center;font-size:14px;cursor:pointer;margin:0;font-weight:600}
 .alert-success{background:#c6f6d5;color:#22543d;padding:12px;border-radius:6px;margin-bottom:15px;font-weight:500}
 #captchaModal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px)}
@@ -233,12 +261,13 @@ input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px;
 .btn-captcha{background:#dd6b20;color:white;padding:12px 24px;font-size:15px;font-weight:bold;display:inline-block;border-radius:6px;text-decoration:none;margin-top:15px;box-shadow:0 4px 10px rgba(221,107,32,0.3);width:48%;box-sizing:border-box;margin-right:2%}
 .btn-abort{background:#e53e3e;color:white;padding:12px 24px;font-size:15px;font-weight:bold;display:inline-block;border-radius:6px;text-decoration:none;margin-top:15px;width:48%;box-sizing:border-box}
 .modal-log-box{background:#1a202c;color:#a3e635;font-family:monospace;font-size:11px;padding:10px;border-radius:6px;height:180px;overflow-y:auto;white-space:pre-wrap;margin-top:15px;text-align:left;border:1px solid #4a5568}
+.hint-text{font-size:11px;color:#718096;margin-left:22px;line-height:1.4;font-weight:normal}
 </style></head><body>
 
 <div id="captchaModal">
     <div class="modal-content">
         <div class="modal-header">🧩 Требуется решение VK Капчи<span class="close-x" onclick="closeModalSoft()">&times;</span></div>
-        <p style="font-size:14px;color:#4a5568;line-height:1.5;margin:0">Скопируйте команду ниже в терминал вашего ПК для проброса порта, а затем откройте страницу капчи:</p>
+        <p style="font-size:14px;color:#4a5568;line-height:1.5;margin:0">Скопируйте команду ниже в terminal вашего ПК для проброса порта, а затем откройте страницу капчи:</p>
         <input type="text" id="sshCmd" readonly style="margin:12px 0;background:#f7fafc;text-align:center;" onclick="this.select()">
         <div>
             <a href="http://localhost:8765" target="_blank" class="btn btn-captcha">Открыть капчу ↗</a>
@@ -251,29 +280,46 @@ input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px;
 <div class="card"><h2>📊 Состояние службы</h2><div class="status-bar"><div>Текущий статус: <span id="statusIndicator">Загрузка...</span></div><div><a href="client.cgi?action=start" class="btn btn-action" style="background:#38a169">Старт</a> <a href="client.cgi?action=stop" class="btn btn-action" style="background:#e53e3e">Стоп</a> <a href="client.cgi?action=restart" class="btn btn-action" style="background:#dd6b20">Рестарт</a></div></div></div>
 <div class="card"><h2>⚙️ Полная конфигурация</h2><script>if(window.location.search.includes('saved=1')) document.write('<div class="alert-success">✅ Настройки сохранены!</div>');</script>
 <form method="POST"><label style="color:#2b6cb0">📥 Расшифровка (freeturn://)</label><textarea id="decoderInput" style="height:45px" oninput="parseFreeTurnLink()"></textarea>
-<div class="flex-group"><div class="flex-child"><label>Адрес (-peer)</label><input type="text" name="peer" id="outPeer" value="\$PEER" required></div><div class="flex-child"><label>Профиль</label><input type="text" name="obf" id="outObf" value="\$OBF_PROFILE" required></div></div>
-<label>Ключ (-obf-key)</label><input type="text" name="key" id="outKey" value="\$OBF_KEY" required>
-<label>Ссылки VK (-links)</label><textarea name="vk_links" id="outLinks" style="height:70px" required>\$LINKS</textarea>
+<div class="flex-group"><div class="flex-child"><label>Адрес (-peer)</label><input type="text" name="peer" value="$PEER" required></div><div class="flex-child"><label>Профиль</label><input type="text" name="obf" value="$OBF_PROFILE" required></div></div>
+<label>Ключ (-obf-key)</label><input type="text" name="key" value="$OBF_KEY" required>
+<label>Ссылки VK (-links)</label><textarea name="vk_links" style="height:70px" required>$LINKS</textarea>
 
 <h3 style="margin:24px 0 10px 0;border-bottom:1px solid #edf2f7;padding-bottom:8px;font-size:16px;color:#4a5568">🛠️ Дополнительные настройки</h3>
 <div class="flex-group">
-    <div class="flex-child"><label>Потоки (-n)</label><input type="number" name="threads" value="\$THREADS" min="1" max="100" required></div>
-    <div class="flex-child"><label>Стримы (на кред)</label><input type="number" name="streams" value="\$STREAMS" min="1" max="50" required></div>
+    <div class="flex-child"><label>Потоки (-n)</label><input type="number" name="threads" value="$THREADS" min="1" max="100" required></div>
+    <div class="flex-child"><label>Стримы (на кред)</label><input type="number" name="streams" value="$STREAMS" min="1" max="50" required></div>
     <div class="flex-child">
         <label>Протокол</label>
         <select name="transport">
-            <option value="tcp" \$([ "\$TRANSPORT" = "tcp" ] && echo "selected")>TCP</option>
-            <option value="udp" \$([ "\$TRANSPORT" = "udp" ] && echo "selected")>UDP</option>
+            <option value="tcp" $([ "$TRANSPORT" = "tcp" ] && echo "selected")>TCP</option>
+            <option value="udp" $([ "$TRANSPORT" = "udp" ] && echo "selected")>UDP</option>
         </select>
     </div>
 </div>
 
-<div class="checkbox-container"><label class="checkbox-label" style="color:#c53030"><input type="checkbox" name="manual_captcha" id="captchaCheckbox" \$([ "\$MANUAL_CAPTCHA" = "yes" ] && echo "checked")>🧩 Обработка сложной капчи</label></div>
+<div class="checkbox-container">
+    <label class="checkbox-label" style="color:#c53030">
+        <input type="checkbox" name="manual_captcha" id="captchaCheckbox" $([ "$MANUAL_CAPTCHA" = "yes" ] && echo "checked")>🧩 Обработка сложной капчи
+    </label>
+    <div class="hint-text">💡 При включении этой функции, при появлении капчи вам потребуется пробросить порт 8765 через SSH-туннель на вашем ПК для ручного ввода символов. Команда для проброса сгенерируется автоматически.</div>
+</div>
 <button type="submit" class="btn btn-primary">Применить и перезапустить</button></form></div>
 <div class="card"><h2>📜 Терминал логов</h2><div class="log-box" id="logConsole">Загрузка...</div></div>
 <script>
 let forceClosed = false;
-function parseFreeTurnLink() { let i=document.getElementById('decoderInput').value.trim(); if(!i.startsWith("freeturn://")) return; try{ let b=i.replace("freeturn://",""); while(b.length%4!==0)b+="="; let p=JSON.parse(decodeURIComponent(escape(atob(b)))); if(p.peer)document.getElementById('outPeer').value=p.peer; if(p.obf)document.getElementById('outObf').value=p.obf; if(p.key)document.getElementById('outKey').value=p.key; if(p.links)document.getElementById('outLinks').value=p.links; }catch(e){} }
+function parseFreeTurnLink() { 
+    let i=document.getElementById('decoderInput').value.trim(); 
+    if(!i.startsWith("freeturn://")) return; 
+    try{ 
+        let b=i.replace("freeturn://",""); 
+        while(b.length%4!==0)b+="="; 
+        let p=JSON.parse(decodeURIComponent(escape(atob(b)))); 
+        if(p.peer) document.getElementsByName('peer')[0].value=p.peer; 
+        if(p.obf) document.getElementsByName('obf')[0].value=p.obf; 
+        if(p.key) document.getElementsByName('key')[0].value=p.key; 
+        if(p.links) document.getElementsByName('vk_links')[0].value=p.links; 
+    }catch(e){} 
+}
 
 document.getElementById('sshCmd').value = "ssh -N -L 8765:127.0.0.1:8765 root@" + window.location.hostname + " -p 222";
 
@@ -308,7 +354,16 @@ sed -i 's/\r$//' /opt/share/www/client.cgi
 LAN_IP=$(ip -4 addr show br0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
 [ -z "$LAN_IP" ] && LAN_IP=$(ip -4 addr show 2>/dev/null | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+' | head -n 1)
 
+# Запускаем службу только в том случае, если пир был успешно настроен во время установки
+if [ -n "$PEER" ]; then
+    echo "🚀 Запуск службы..."
+    /opt/etc/init.d/S99vk-turn start >/dev/null 2>&1
+fi
+
 echo "====================================================="
 echo "🎉 Проект FreeTurn Web-GUI успешно установлен!"
 echo "👉 Админка доступна по ссылке: http://${LAN_IP:-192.168.1.1}:8089/client.cgi"
 echo "====================================================="
+INSTALL_EOF
+
+sh /tmp/install-client.sh
