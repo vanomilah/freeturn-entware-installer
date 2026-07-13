@@ -27,8 +27,7 @@ PRIMARY_URL="https://github.com/samosvalishe/free-turn-proxy/releases/download/$
 MIRROR_URL="https://mirror.ghproxy.com/https://github.com/samosvalishe/free-turn-proxy/releases/download/${LATEST_VERSION}/${FILE_NAME}"
 
 echo "⬇️ Скачивание ${FILE_NAME}..."
-# Сначала пробуем скачать напрямую с GitHub
-if ! curl -4 -kL --connect-timeout 10 -o /opt/bin/freeturn-client "$PRIMARY_URL"; then
+if ! curl -4 -kL --connect-timeout 8 -o /opt/bin/freeturn-client "$PRIMARY_URL"; then
     echo "⚠️ Прямое скачивание не удалось. Пробуем через зеркало..."
     curl -4 -kL -o /opt/bin/freeturn-client "$MIRROR_URL"
 fi
@@ -36,22 +35,88 @@ fi
 if [ -s "/opt/bin/freeturn-client" ]; then
     chmod +x /opt/bin/freeturn-client
 else
-    echo "❌ Ошибка: Не удалось скачать клиентский бинарник ни с одного источника!"
+    echo "❌ Ошибка: Не удалось скачать клиентский бинарник!"
     exit 1
 fi
 
-echo "⚙️ Создание чистого файла конфигурации..."
-cat << 'CONF_EOF' > /opt/etc/vk-turn.conf
 PEER=""
 LINKS=""
 OBF_PROFILE=""
 OBF_KEY=""
-CLIENT_ID="1aa1a31943b997ca7a8a4882b18f4bff"
-LISTEN="127.0.0.1:9000"
 THREADS="12"
 STREAMS="6"
 TRANSPORT="tcp"
 MANUAL_CAPTCHA="yes"
+
+# --- ИНТЕРАКТИВНЫЙ ЗАПРОС И ДЕКОДИРОВАНИЕ ССЫЛКИ ---
+echo "-----------------------------------------------------"
+echo "📥 Хотите сразу импортировать настройки при установке?"
+echo "   (Вставьте ссылку freeturn:// или нажмите Enter для пропуска)"
+echo "-----------------------------------------------------"
+printf "Ссылка: "
+read -r FREETURN_LINK
+
+if [ -n "$FREETURN_LINK" ] && echo "$FREETURN_LINK" | grep -q "^freeturn://"; then
+    echo "🔑 Декодирование ссылки..."
+    
+    # Вырезаем префикс и чистим пробелы/переносы
+    B64_CLEANED=$(echo "$FREETURN_LINK" | sed 's|^freeturn://||' | tr -d '\r\n\t ')
+    
+    # Железобетонный base64-декодер на awk, который работает на любом BusyBox
+    JSON_DATA=$(echo "$B64_CLEANED" | tr '_-' '/+' | awk '
+    BEGIN {
+        c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        for (i=0; i<64; i++) base64[substr(c, i+1, 1)] = i
+    }
+    {
+        gsub(/[^A-Za-z0-9+\/]/, "")
+        len = length($0)
+        for (i=1; i<=len; i+=4) {
+            val = 0
+            for (j=0; j<4; j++) {
+                char = substr($0, i+j, 1)
+                val = val * 64 + (char == "" ? 0 : base64[char])
+            }
+            c3 = val % 256
+            val = int(val / 256)
+            c2 = val % 256
+            val = int(val / 256)
+            c1 = val % 256
+            
+            # Исключаем паддинг-символы
+            pad = 0
+            if (substr($0, i+2, 1) == "=") pad = 2
+            else if (substr($0, i+3, 1) == "=") pad = 1
+            
+            if (pad == 0) printf "%c%c%c", c1, c2, c3
+            else if (pad == 1) printf "%c%c", c1, c2
+            else if (pad == 2) printf "%c", c1
+        }
+    }')
+
+    if [ -n "$JSON_DATA" ] && echo "$JSON_DATA" | grep -q '"peer":'; then
+        PEER=$(echo "$JSON_DATA" | grep -o '"peer":"[^"]*' | cut -d'"' -f4)
+        LINKS=$(echo "$JSON_DATA" | grep -o '"links":"[^"]*' | cut -d'"' -f4)
+        OBF_PROFILE=$(echo "$JSON_DATA" | grep -o '"obf":"[^"]*' | cut -d'"' -f4)
+        OBF_KEY=$(echo "$JSON_DATA" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
+        echo "✅ Данные успешно декодированы и применены!"
+    else
+        echo "⚠️  Не удалось разобрать JSON. Данные можно ввести позже в Web-интерфейсе."
+    fi
+fi
+
+echo "⚙️ Запись файла конфигурации /opt/etc/vk-turn.conf..."
+cat << CONF_EOF > /opt/etc/vk-turn.conf
+PEER="$PEER"
+LINKS="$LINKS"
+OBF_PROFILE="$OBF_PROFILE"
+OBF_KEY="$OBF_KEY"
+CLIENT_ID="1aa1a31943b997ca7a8a4882b18f4bff"
+LISTEN="127.0.0.1:9000"
+THREADS="$THREADS"
+STREAMS="$STREAMS"
+TRANSPORT="$TRANSPORT"
+MANUAL_CAPTCHA="$MANUAL_CAPTCHA"
 CONF_EOF
 
 echo "⚙️ Создание системной службы запуска..."
@@ -320,6 +385,12 @@ sed -i 's/\r$//' /opt/share/www/client.cgi
 
 LAN_IP=$(ip -4 addr show br0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
 [ -z "$LAN_IP" ] && LAN_IP=$(ip -4 addr show 2>/dev/null | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+' | head -n 1)
+
+# Автозапуск службы, если настройки были успешно импортированы при установке
+if [ -n "$PEER" ]; then
+    echo "🚀 Автозапуск службы с импортированными настройками..."
+    /opt/etc/init.d/S99vk-turn start >/dev/null 2>&1
+fi
 
 echo "====================================================="
 echo "🎉 Проект FreeTurn Web-GUI успешно установлен!"
