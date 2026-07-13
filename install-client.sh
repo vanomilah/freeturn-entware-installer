@@ -39,16 +39,7 @@ else
     exit 1
 fi
 
-PEER=""
-LINKS=""
-OBF_PROFILE=""
-OBF_KEY=""
-THREADS="12"
-STREAMS="6"
-TRANSPORT="tcp"
-MANUAL_CAPTCHA="yes"
-
-# --- ИНТЕРАКТИВНЫЙ ЗАПРОС И ДЕКОДИРОВАНИЕ ССЫЛКИ ---
+# --- ИНТЕРАКТИВНЫЙ ЗАПРОС ССЫЛКИ ---
 echo "-----------------------------------------------------"
 echo "📥 Хотите сразу импортировать настройки при установке?"
 echo "   (Вставьте ссылку freeturn:// или нажмите Enter для пропуска)"
@@ -56,67 +47,19 @@ echo "-----------------------------------------------------"
 printf "Ссылка: "
 read -r FREETURN_LINK
 
-if [ -n "$FREETURN_LINK" ] && echo "$FREETURN_LINK" | grep -q "^freeturn://"; then
-    echo "🔑 Декодирование ссылки..."
-    
-    # Вырезаем префикс и чистим пробелы/переносы
-    B64_CLEANED=$(echo "$FREETURN_LINK" | sed 's|^freeturn://||' | tr -d '\r\n\t ')
-    
-    # Железобетонный base64-декодер на awk, который работает на любом BusyBox
-    JSON_DATA=$(echo "$B64_CLEANED" | tr '_-' '/+' | awk '
-    BEGIN {
-        c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        for (i=0; i<64; i++) base64[substr(c, i+1, 1)] = i
-    }
-    {
-        gsub(/[^A-Za-z0-9+\/]/, "")
-        len = length($0)
-        for (i=1; i<=len; i+=4) {
-            val = 0
-            for (j=0; j<4; j++) {
-                char = substr($0, i+j, 1)
-                val = val * 64 + (char == "" ? 0 : base64[char])
-            }
-            c3 = val % 256
-            val = int(val / 256)
-            c2 = val % 256
-            val = int(val / 256)
-            c1 = val % 256
-            
-            # Исключаем паддинг-символы
-            pad = 0
-            if (substr($0, i+2, 1) == "=") pad = 2
-            else if (substr($0, i+3, 1) == "=") pad = 1
-            
-            if (pad == 0) printf "%c%c%c", c1, c2, c3
-            else if (pad == 1) printf "%c%c", c1, c2
-            else if (pad == 2) printf "%c", c1
-        }
-    }')
-
-    if [ -n "$JSON_DATA" ] && echo "$JSON_DATA" | grep -q '"peer":'; then
-        PEER=$(echo "$JSON_DATA" | grep -o '"peer":"[^"]*' | cut -d'"' -f4)
-        LINKS=$(echo "$JSON_DATA" | grep -o '"links":"[^"]*' | cut -d'"' -f4)
-        OBF_PROFILE=$(echo "$JSON_DATA" | grep -o '"obf":"[^"]*' | cut -d'"' -f4)
-        OBF_KEY=$(echo "$JSON_DATA" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
-        echo "✅ Данные успешно декодированы и применены!"
-    else
-        echo "⚠️  Не удалось разобрать JSON. Данные можно ввести позже в Web-интерфейсе."
-    fi
-fi
-
-echo "⚙️ Запись файла конфигурации /opt/etc/vk-turn.conf..."
+echo "⚙️ Создание файла конфигурации /opt/etc/vk-turn.conf..."
 cat << CONF_EOF > /opt/etc/vk-turn.conf
-PEER="$PEER"
-LINKS="$LINKS"
-OBF_PROFILE="$OBF_PROFILE"
-OBF_KEY="$OBF_KEY"
+PEER=""
+LINKS=""
+OBF_PROFILE=""
+OBF_KEY=""
 CLIENT_ID="1aa1a31943b997ca7a8a4882b18f4bff"
 LISTEN="127.0.0.1:9000"
-THREADS="$THREADS"
-STREAMS="$STREAMS"
-TRANSPORT="$TRANSPORT"
-MANUAL_CAPTCHA="$MANUAL_CAPTCHA"
+THREADS="12"
+STREAMS="6"
+TRANSPORT="tcp"
+MANUAL_CAPTCHA="yes"
+IMPORT_LINK="$FREETURN_LINK"
 CONF_EOF
 
 echo "⚙️ Создание системной службы запуска..."
@@ -245,6 +188,7 @@ THREADS="${NEW_THREADS:-12}"
 STREAMS="${NEW_STREAMS:-6}"
 TRANSPORT="${NEW_TRANSPORT:-tcp}"
 MANUAL_CAPTCHA="$CAPTCHA_TOGGLE"
+IMPORT_LINK=""
 CONF_EOF
 
     $SERVICE restart > /dev/null 2>&1
@@ -260,6 +204,7 @@ THREADS="12"
 STREAMS="6"
 TRANSPORT="tcp"
 MANUAL_CAPTCHA="yes"
+IMPORT_LINK=""
 
 if [ -f "$CONFIG" ]; then . "$CONFIG"; fi
 
@@ -338,20 +283,21 @@ input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px;
 <div class="card"><h2>📜 Терминал логов</h2><div class="log-box" id="logConsole">Загрузка...</div></div>
 <script>
 let forceClosed = false;
-function parseFreeTurnLink() { 
-    let i=document.getElementById('decoderInput').value.trim(); 
-    if(!i.startsWith("freeturn://")) return; 
-    try{ 
-        let b=i.replace("freeturn://",""); 
-        b = b.replace(/\s/g, '');
-        while(b.length%4!==0)b+="="; 
-        let p=JSON.parse(decodeURIComponent(escape(atob(b)))); 
-        if(p.peer) document.getElementsByName('peer')[0].value=p.peer; 
-        if(p.obf) document.getElementsByName('obf')[0].value=p.obf; 
-        if(p.key) document.getElementsByName('key')[0].value=p.key; 
-        if(p.links) document.getElementsByName('vk_links')[0].value=p.links; 
-    }catch(e){} 
+
+function decodeLinkRaw(rawUrl) {
+    if(!rawUrl.startsWith("freeturn://")) return;
+    try {
+        let b = rawUrl.replace("freeturn://","").replace(/\s/g, '');
+        while(b.length%4!==0) b+="=";
+        let p = JSON.parse(decodeURIComponent(escape(atob(b))));
+        if(p.peer) document.getElementsByName('peer')[0].value=p.peer;
+        if(p.obf) document.getElementsByName('obf')[0].value=p.obf;
+        if(p.key) document.getElementsByName('key')[0].value=p.key;
+        if(p.links) document.getElementsByName('vk_links')[0].value=p.links;
+    } catch(e) {}
 }
+
+function parseFreeTurnLink() { decodeLinkRaw(document.getElementById('decoderInput').value.trim()); }
 
 document.getElementById('sshCmd').value = "ssh -N -L 8765:127.0.0.1:8765 root@" + window.location.hostname + " -p 222";
 
@@ -373,7 +319,18 @@ function pollSystem() {
         }
     }); 
 }
-document.addEventListener("DOMContentLoaded",()=>{ setInterval(pollSystem,1000); pollSystem(); });
+
+document.addEventListener("DOMContentLoaded",()=>{
+    // Автоматический импорт ссылки, если она была передана при установке
+    let savedLink = "$IMPORT_LINK";
+    if (savedLink.startsWith("freeturn://")) {
+        decodeLinkRaw(savedLink);
+        // Сразу кликаем "Применить", чтобы записать нормальный конфиг и запустить службу
+        setTimeout(() => { document.forms[0].submit(); }, 500);
+    }
+    setInterval(pollSystem,1000); 
+    pollSystem(); 
+});
 </script></body></html>
 HTML_INNER_EOF
 MAIN_CGI_EOF
@@ -385,12 +342,6 @@ sed -i 's/\r$//' /opt/share/www/client.cgi
 
 LAN_IP=$(ip -4 addr show br0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
 [ -z "$LAN_IP" ] && LAN_IP=$(ip -4 addr show 2>/dev/null | grep -oP '(?<=inet\s)192\.168\.\d+\.\d+' | head -n 1)
-
-# Автозапуск службы, если настройки были успешно импортированы при установке
-if [ -n "$PEER" ]; then
-    echo "🚀 Автозапуск службы с импортированными настройками..."
-    /opt/etc/init.d/S99vk-turn start >/dev/null 2>&1
-fi
 
 echo "====================================================="
 echo "🎉 Проект FreeTurn Web-GUI успешно установлен!"
