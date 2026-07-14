@@ -60,6 +60,7 @@ STREAMS="6"
 TRANSPORT="tcp"
 MANUAL_CAPTCHA="yes"
 IMPORT_LINK="$FREETURN_LINK"
+SAVED_WG_CONF=""
 CONF_EOF
 
 echo "⚙️ Создание системной службы запуска..."
@@ -174,6 +175,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
     NEW_THREADS=$(echo "$DECODED" | grep -o 'threads=[^&]*' | cut -d= -f2 | tr -d "'\"")
     NEW_STREAMS=$(echo "$DECODED" | grep -o 'streams=[^&]*' | cut -d= -f2 | tr -d "'\"")
     NEW_TRANSPORT=$(echo "$DECODED" | grep -o 'transport=[^&]*' | cut -d= -f2 | tr -d "'\"")
+    NEW_SAVED_WG=$(echo "$DECODED" | grep -o 'saved_wg_conf=[^&]*' | cut -d= -f2 | tr -d "'\"")
 
     if echo "$POST_DATA" | grep -q "manual_captcha=on"; then CAPTCHA_TOGGLE="yes"; else CAPTCHA_TOGGLE="no"; fi
 
@@ -189,6 +191,7 @@ STREAMS="${NEW_STREAMS:-6}"
 TRANSPORT="${NEW_TRANSPORT:-tcp}"
 MANUAL_CAPTCHA="$CAPTCHA_TOGGLE"
 IMPORT_LINK=""
+SAVED_WG_CONF="$NEW_SAVED_WG"
 CONF_EOF
 
     $SERVICE restart > /dev/null 2>&1
@@ -205,6 +208,7 @@ STREAMS="6"
 TRANSPORT="tcp"
 MANUAL_CAPTCHA="yes"
 IMPORT_LINK=""
+SAVED_WG_CONF=""
 
 if [ -f "$CONFIG" ]; then . "$CONFIG"; fi
 
@@ -238,6 +242,7 @@ input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px;
 .btn-abort{background:#e53e3e;color:white;padding:12px 24px;font-size:15px;font-weight:bold;display:inline-block;border-radius:6px;text-decoration:none;margin-top:15px;width:48%;box-sizing:border-box}
 .modal-log-box{background:#1a202c;color:#a3e635;font-family:monospace;font-size:11px;padding:10px;border-radius:6px;height:180px;overflow-y:auto;white-space:pre-wrap;margin-top:15px;text-align:left;border:1px solid #4a5568}
 .hint-text{font-size:11px;color:#718096;margin-left:22px;line-height:1.4;font-weight:normal}
+.wg-config-box{background:#f0f4f8;border:2px dashed #b2c2d2;padding:15px;border-radius:8px;margin-top:15px;}
 </style></head><body>
 
 <div id="captchaModal">
@@ -256,9 +261,20 @@ input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px;
 <div class="card"><h2>📊 Состояние службы</h2><div class="status-bar"><div>Текущий статус: <span id="statusIndicator">Загрузка...</span></div><div><a href="client.cgi?action=start" class="btn btn-action" style="background:#38a169">Старт</a> <a href="client.cgi?action=stop" class="btn btn-action" style="background:#e53e3e">Стоп</a> <a href="client.cgi?action=restart" class="btn btn-action" style="background:#dd6b20">Рестарт</a></div></div></div>
 <div class="card"><h2>⚙️ Полная конфигурация</h2><script>if(window.location.search.includes('saved=1')) document.write('<div class="alert-success">✅ Настройки сохранены!</div>');</script>
 <form method="POST"><label style="color:#2b6cb0">📥 Расшифровка (freeturn://)</label><textarea id="decoderInput" style="height:45px" oninput="parseFreeTurnLink()"></textarea>
+
+<input type="hidden" name="saved_wg_conf" id="savedWgConf" value="$SAVED_WG_CONF">
+
 <div class="flex-group"><div class="flex-child"><label>Адрес (-peer)</label><input type="text" name="peer" value="$PEER" required></div><div class="flex-child"><label>Профиль</label><input type="text" name="obf" value="$OBF_PROFILE" required></div></div>
 <label>Ключ (-obf-key)</label><input type="text" name="key" value="$OBF_KEY" required>
 <label>Ссылки VK (-links)</label><textarea name="vk_links" style="height:70px" required>$LINKS</textarea>
+
+<div class="wg-config-box" id="wgConfigCard" style="display: none;">
+    <label style="color:#2b6cb0;margin-top:0;display:flex;justify-content:space-between;align-items:center;">
+        🔑 Полученный Конфиг WireGuard
+        <button type="button" onclick="copyWgConfig()" style="font-size:11px;padding:3px 8px;background:#2b6cb0;color:#fff;border:none;border-radius:4px;cursor:pointer;">Скопировать конфиг</button>
+    </label>
+    <textarea id="wgDisplay" readonly style="height:150px;margin-top:8px;background:#fff;border-color:#b2c2d2;font-size:12px;color:#2d3748;"></textarea>
+</div>
 
 <h3 style="margin:24px 0 10px 0;border-bottom:1px solid #edf2f7;padding-bottom:8px;font-size:16px;color:#4a5568">🛠️ Дополнительные настройки</h3>
 <div class="flex-group">
@@ -294,10 +310,32 @@ function decodeLinkRaw(rawUrl) {
         if(p.obf) document.getElementsByName('obf')[0].value=p.obf;
         if(p.key) document.getElementsByName('key')[0].value=p.key;
         if(p.links) document.getElementsByName('vk_links')[0].value=p.links;
+        if(p.wg) {
+            document.getElementById('savedWgConf').value = p.wg;
+            showWgConfig(p.wg);
+        }
     } catch(e) {}
 }
 
 function parseFreeTurnLink() { decodeLinkRaw(document.getElementById('decoderInput').value.trim()); }
+
+function showWgConfig(confText) {
+    if(!confText) return;
+    const cleanConf = confText.replace(/\\n/g, '\n');
+    document.getElementById('wgDisplay').value = cleanConf;
+    document.getElementById('wgConfigCard').style.display = 'block';
+}
+
+function copyWgConfig() {
+    const wgText = document.getElementById('wgDisplay');
+    wgText.select();
+    try {
+        document.execCommand('copy');
+        alert("Конфиг WireGuard скопирован в буфер обмена!");
+    } catch (err) {
+        alert("Не удалось скопировать.");
+    }
+}
 
 document.getElementById('sshCmd').value = "ssh -N -L 8765:127.0.0.1:8765 root@" + window.location.hostname + " -p 222";
 
@@ -321,11 +359,14 @@ function pollSystem() {
 }
 
 document.addEventListener("DOMContentLoaded",()=>{
-    // Автоматический импорт ссылки, если она была передана при установке
+    let initialWg = document.getElementById('savedWgConf').value;
+    if(initialWg) {
+        showWgConfig(initialWg);
+    }
+
     let savedLink = "$IMPORT_LINK";
     if (savedLink.startsWith("freeturn://")) {
         decodeLinkRaw(savedLink);
-        // Сразу кликаем "Применить", чтобы записать нормальный конфиг и запустить службу
         setTimeout(() => { document.forms[0].submit(); }, 500);
     }
     setInterval(pollSystem,1000); 
